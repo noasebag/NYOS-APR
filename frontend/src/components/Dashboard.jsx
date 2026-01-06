@@ -1,0 +1,549 @@
+import { useState, useEffect } from 'react';
+import { 
+  Package, AlertTriangle, CheckCircle, Clock, FileWarning, Wrench, 
+  TrendingUp, TrendingDown, FileText, Download, Activity, Target,
+  AlertCircle, Zap, BarChart3, ArrowUpRight, ArrowDownRight, Minus,
+  Factory, Users, Truck, Shield, ChevronDown, ChevronUp, X
+} from 'lucide-react';
+import { api } from '../api';
+import { 
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area 
+} from 'recharts';
+
+function parseMarkdown(text) {
+  if (!text) return '';
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/### (.*?)(\n|$)/g, '<h4 class="font-semibold text-lg mt-4 mb-2">$1</h4>')
+    .replace(/## (.*?)(\n|$)/g, '<h3 class="font-bold text-xl mt-4 mb-2">$1</h3>')
+    .replace(/# (.*?)(\n|$)/g, '<h2 class="font-bold text-2xl mt-4 mb-3">$1</h2>')
+    .replace(/- (.*?)(\n|$)/g, '<li class="ml-4">$1</li>')
+    .replace(/\n/g, '<br/>');
+}
+
+// Quality Score Gauge
+function QualityGauge({ score }) {
+  const getColor = (s) => {
+    if (s >= 90) return '#22c55e';
+    if (s >= 75) return '#eab308';
+    if (s >= 50) return '#f97316';
+    return '#ef4444';
+  };
+  
+  const getLabel = (s) => {
+    if (s >= 90) return 'Excellent';
+    if (s >= 75) return 'Good';
+    if (s >= 50) return 'Needs Attention';
+    return 'Critical';
+  };
+
+  const color = getColor(score);
+  const circumference = 2 * Math.PI * 45;
+  const progress = (score / 100) * circumference;
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative">
+        <svg className="w-32 h-32 transform -rotate-90">
+          <circle cx="64" cy="64" r="45" stroke="#e5e7eb" strokeWidth="10" fill="none" />
+          <circle 
+            cx="64" cy="64" r="45" 
+            stroke={color} 
+            strokeWidth="10" 
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference - progress}
+            strokeLinecap="round"
+            className="transition-all duration-1000"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-3xl font-bold" style={{ color }}>{score}</span>
+          <span className="text-xs text-gray-500">/100</span>
+        </div>
+      </div>
+      <span className="mt-2 text-sm font-medium" style={{ color }}>{getLabel(score)}</span>
+    </div>
+  );
+}
+
+// KPI Card with trend
+function KPICard({ icon: Icon, label, value, trend, trendValue, color = 'blue', subtext }) {
+  const colors = {
+    blue: 'bg-blue-100 text-blue-600 border-blue-200',
+    green: 'bg-green-100 text-green-600 border-green-200',
+    yellow: 'bg-yellow-100 text-yellow-600 border-yellow-200',
+    red: 'bg-red-100 text-red-600 border-red-200',
+    purple: 'bg-purple-100 text-purple-600 border-purple-200',
+  };
+  
+  const TrendIcon = trend === 'up' ? ArrowUpRight : trend === 'down' ? ArrowDownRight : Minus;
+  const trendColor = trend === 'up' ? 'text-green-500' : trend === 'down' ? 'text-red-500' : 'text-gray-400';
+  
+  return (
+    <div className="bg-white rounded-xl p-5 border border-gray-200 hover:shadow-lg transition-shadow">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="text-sm text-gray-500 mb-1">{label}</p>
+          <p className="text-2xl font-bold text-gray-900">{value}</p>
+          {(trendValue !== undefined) && (
+            <div className={`flex items-center gap-1 mt-1 text-sm ${trendColor}`}>
+              <TrendIcon size={14} />
+              <span>{trendValue > 0 ? '+' : ''}{trendValue}%</span>
+            </div>
+          )}
+          {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
+        </div>
+        <div className={`p-3 rounded-lg ${colors[color]}`}>
+          <Icon size={22} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Drift Alert Card
+function DriftCard({ drift }) {
+  const isAlert = drift.alert;
+  const Icon = drift.direction === 'up' ? TrendingUp : TrendingDown;
+  
+  return (
+    <div className={`p-4 rounded-lg border ${isAlert ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg ${isAlert ? 'bg-yellow-100' : 'bg-gray-100'}`}>
+            <Icon size={18} className={isAlert ? 'text-yellow-600' : 'text-gray-500'} />
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">{drift.label}</p>
+            <p className="text-sm text-gray-500">
+              {drift.previous_avg} → {drift.current_avg}
+            </p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className={`font-bold ${drift.change > 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {drift.change > 0 ? '+' : ''}{drift.change}
+          </p>
+          <p className="text-xs text-gray-400">{drift.change_pct}%</p>
+        </div>
+      </div>
+      {drift.equipment_drifts?.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-yellow-200">
+          <p className="text-xs text-yellow-700 mb-1">Affected equipment:</p>
+          {drift.equipment_drifts.map((eq, i) => (
+            <span key={i} className="inline-block bg-yellow-100 text-yellow-700 text-xs px-2 py-1 rounded mr-1">
+              {eq.equipment}: {eq.change > 0 ? '+' : ''}{eq.change}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Anomaly Item
+function AnomalyItem({ anomaly }) {
+  const colors = {
+    critical: 'bg-red-100 text-red-700 border-red-200',
+    warning: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  };
+  
+  return (
+    <div className={`p-3 rounded-lg border ${colors[anomaly.severity]} mb-2`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium">{anomaly.message}</p>
+          {anomaly.batch_id && <p className="text-sm opacity-75">Lot: {anomaly.batch_id}</p>}
+          {anomaly.details && <p className="text-xs mt-1 opacity-60">{anomaly.details}</p>}
+        </div>
+        <span className={`text-xs px-2 py-1 rounded ${anomaly.severity === 'critical' ? 'bg-red-200' : 'bg-yellow-200'}`}>
+          {anomaly.severity}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const [analytics, setAnalytics] = useState(null);
+  const [drifts, setDrifts] = useState(null);
+  const [anomalies, setAnomalies] = useState(null);
+  const [yearly, setYearly] = useState(null);
+  const [suppliers, setSuppliers] = useState(null);
+  const [summary, setSummary] = useState('');
+  const [report, setReport] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryMinimized, setSummaryMinimized] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+
+  useEffect(() => { loadData(); }, []);
+
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [analyticsData, driftsData, anomaliesData, yearlyData, suppliersData] = await Promise.all([
+        api.getAnalyticsOverview(),
+        api.getDriftDetection(90),
+        api.getAnomalies(30),
+        api.getYearlySummary(),
+        api.getSupplierPerformance()
+      ]);
+      setAnalytics(analyticsData);
+      setDrifts(driftsData);
+      setAnomalies(anomaliesData);
+      setYearly(yearlyData);
+      setSuppliers(suppliersData);
+    } catch (e) {
+      console.error('Failed to load analytics:', e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function generateSummary() {
+    setSummaryLoading(true);
+    setSummary('');
+    api.streamSummary(
+      (text) => setSummary(prev => prev + text),
+      () => setSummaryLoading(false),
+      (error) => { setSummary("Error: " + error); setSummaryLoading(false); }
+    );
+  }
+
+  async function generateReport() {
+    setReportLoading(true);
+    try {
+      const data = await api.getReport();
+      setReport(data.report);
+      setShowReport(true);
+    } catch (e) { setReport("Error generating report."); }
+    finally { setReportLoading(false); }
+  }
+
+  function downloadReport() {
+    const blob = new Blob([report], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'apr_report_nyos.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function printReport() {
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`<html><head><title>NYOS APR Report</title><style>body{font-family:Arial,sans-serif;padding:40px;max-width:800px;margin:0 auto}h1,h2,h3,h4{color:#1e40af}ul{margin-left:20px}</style></head><body>${parseMarkdown(report)}</body></html>`);
+    printWindow.document.close();
+    printWindow.print();
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading analytics...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!analytics?.has_data) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-8 text-center">
+        <AlertTriangle className="mx-auto text-yellow-500 mb-4" size={56} />
+        <h3 className="font-semibold text-yellow-800 text-xl mb-2">No data available</h3>
+        <p className="text-yellow-600 mb-4">
+          Import data via the "Import Data" tab to start the analysis.
+        </p>
+        <p className="text-sm text-yellow-500">
+          Use CSV files generated in the apr_data/ folder
+        </p>
+      </div>
+    );
+  }
+
+  const criticalIssues = (anomalies?.critical || 0) + (analytics?.compliance?.overdue_capas || 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Quality Dashboard</h2>
+          <p className="text-sm text-gray-500">
+            Period: {analytics?.period?.start?.slice(0,10)} - {analytics?.period?.end?.slice(0,10)} ({analytics?.period?.years} years)
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={generateSummary} disabled={summaryLoading} className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors">
+            {summaryLoading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <Zap size={18} />}
+            AI Summary
+          </button>
+          <button onClick={generateReport} disabled={reportLoading} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+            {reportLoading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <FileText size={18} />}
+            APR Report
+          </button>
+        </div>
+      </div>
+
+      {/* Critical Alert Banner */}
+      {criticalIssues > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-4">
+          <div className="p-3 bg-red-100 rounded-full">
+            <AlertCircle className="text-red-600" size={24} />
+          </div>
+          <div className="flex-1">
+            <p className="font-semibold text-red-800">Warning: {criticalIssues} critical issue(s)</p>
+            <p className="text-sm text-red-600">
+              {anomalies?.critical || 0} critical anomalies, {analytics?.compliance?.overdue_capas || 0} overdue CAPAs
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* AI Summary */}
+      {summary && (
+        <div className="bg-gradient-to-r from-primary-50 to-blue-50 border border-primary-200 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-primary-900 flex items-center gap-2">
+              <Zap size={20} className="text-primary-600" /> AI Executive Summary
+            </h3>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setSummaryMinimized(!summaryMinimized)} 
+                className="p-1.5 hover:bg-primary-100 rounded-lg transition-colors text-primary-600"
+                title={summaryMinimized ? "Expand" : "Minimize"}
+              >
+                {summaryMinimized ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+              </button>
+              <button 
+                onClick={() => setSummary('')} 
+                className="p-1.5 hover:bg-red-100 rounded-lg transition-colors text-red-500"
+                title="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+          {!summaryMinimized && (
+            <div className="text-gray-700 prose max-w-none" dangerouslySetInnerHTML={{ __html: parseMarkdown(summary) }} />
+          )}
+          {summaryMinimized && (
+            <p className="text-sm text-gray-500 italic">Click to expand the summary</p>
+          )}
+        </div>
+      )}
+
+      {/* Quality Score & Main KPIs */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Quality Score */}
+        <div className="bg-white rounded-xl p-6 border border-gray-200 flex flex-col items-center justify-center">
+          <h3 className="text-sm font-medium text-gray-500 mb-4">Overall Quality Score</h3>
+          <QualityGauge score={analytics?.quality?.quality_score || 0} />
+        </div>
+
+        {/* Main KPIs */}
+        <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-3 gap-4">
+          <KPICard 
+            icon={Factory} 
+            label="Batches Produced" 
+            value={analytics?.production?.total_batches?.toLocaleString() || 0}
+            subtext={`${analytics?.production?.recent_batches || 0} this month`}
+            color="blue"
+          />
+          <KPICard 
+            icon={Target} 
+            label="Average Yield" 
+            value={`${analytics?.production?.avg_yield || 0}%`}
+            trend={analytics?.production?.recent_yield > analytics?.production?.avg_yield ? 'up' : 'down'}
+            trendValue={((analytics?.production?.recent_yield - analytics?.production?.avg_yield) || 0).toFixed(1)}
+            color="green"
+          />
+          <KPICard 
+            icon={CheckCircle} 
+            label="QC Pass Rate" 
+            value={`${analytics?.quality?.pass_rate || 0}%`}
+            color={analytics?.quality?.pass_rate >= 99 ? 'green' : 'yellow'}
+          />
+          <KPICard 
+            icon={AlertTriangle} 
+            label="Open Complaints" 
+            value={analytics?.compliance?.open_complaints || 0}
+            subtext={`${analytics?.compliance?.critical_complaints || 0} critical`}
+            color={analytics?.compliance?.open_complaints > 5 ? 'red' : 'yellow'}
+          />
+          <KPICard 
+            icon={FileWarning} 
+            label="Open CAPAs" 
+            value={analytics?.compliance?.open_capas || 0}
+            subtext={`${analytics?.compliance?.overdue_capas || 0} overdue`}
+            color={analytics?.compliance?.overdue_capas > 0 ? 'red' : 'yellow'}
+          />
+          <KPICard 
+            icon={Wrench} 
+            label="Calibrations OK" 
+            value={`${analytics?.equipment?.calibration_pass_rate || 0}%`}
+            color={analytics?.equipment?.failed_calibrations > 0 ? 'yellow' : 'green'}
+          />
+        </div>
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Yearly Trends */}
+        {yearly?.years?.length > 0 && (
+          <div className="bg-white rounded-xl p-6 border border-gray-200">
+            <h3 className="font-semibold text-gray-900 mb-4">Annual Yield Evolution</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={yearly.years}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="year" stroke="#6b7280" fontSize={12} />
+                <YAxis stroke="#6b7280" fontSize={12} domain={[90, 100]} />
+                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+                <Area type="monotone" dataKey="avg_yield" name="Yield %" stroke="#22c55e" fill="#22c55e" fillOpacity={0.2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Complaints by Year */}
+        {yearly?.years?.length > 0 && (
+          <div className="bg-white rounded-xl p-6 border border-gray-200">
+            <h3 className="font-semibold text-gray-900 mb-4">Complaints by Year</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={yearly.years}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="year" stroke="#6b7280" fontSize={12} />
+                <YAxis stroke="#6b7280" fontSize={12} />
+                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+                <Bar dataKey="complaints" name="Complaints" fill="#f97316" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* Drifts & Anomalies */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Drift Detection */}
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900">Drift Detection</h3>
+            {drifts?.total_alerts > 0 && (
+              <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-sm">
+                {drifts.total_alerts} alert(s)
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 mb-4">{drifts?.period}</p>
+          <div className="space-y-3">
+            {drifts?.drifts?.slice(0, 4).map((drift, i) => (
+              <DriftCard key={i} drift={drift} />
+            ))}
+            {(!drifts?.drifts || drifts.drifts.length === 0) && (
+              <p className="text-gray-400 text-center py-4">No significant drift detected</p>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Anomalies */}
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900">Recent Anomalies</h3>
+            <span className={`px-2 py-1 rounded-full text-sm ${
+              anomalies?.critical > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+            }`}>
+              {anomalies?.total || 0} detected
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 mb-4">{anomalies?.period}</p>
+          <div className="max-h-64 overflow-y-auto">
+            {anomalies?.anomalies?.slice(0, 6).map((a, i) => (
+              <AnomalyItem key={i} anomaly={a} />
+            ))}
+            {(!anomalies?.anomalies || anomalies.anomalies.length === 0) && (
+              <p className="text-gray-400 text-center py-4">No recent anomalies</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Supplier Performance */}
+      {suppliers?.suppliers?.length > 0 && (
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Truck size={20} /> Supplier Performance
+            </h3>
+            {suppliers.at_risk > 0 && (
+              <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-sm">
+                {suppliers.at_risk} at risk
+              </span>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 font-medium text-gray-500">Supplier</th>
+                  <th className="text-center py-2 font-medium text-gray-500">Deliveries</th>
+                  <th className="text-center py-2 font-medium text-gray-500">Approved</th>
+                  <th className="text-center py-2 font-medium text-gray-500">Rejected</th>
+                  <th className="text-center py-2 font-medium text-gray-500">Rate</th>
+                  <th className="text-center py-2 font-medium text-gray-500">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {suppliers.suppliers.slice(0, 5).map((s, i) => (
+                  <tr key={i} className="border-b border-gray-100">
+                    <td className="py-2 font-medium">{s.supplier_name || s.supplier_id}</td>
+                    <td className="text-center py-2">{s.total_deliveries}</td>
+                    <td className="text-center py-2 text-green-600">{s.approved}</td>
+                    <td className="text-center py-2 text-red-600">{s.rejected}</td>
+                    <td className="text-center py-2 font-medium">{s.approval_rate}%</td>
+                    <td className="text-center py-2">
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        s.status === 'good' ? 'bg-green-100 text-green-700' :
+                        s.status === 'warning' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {s.status === 'good' ? 'OK' : s.status === 'warning' ? 'Warning' : 'Critical'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Report Modal */}
+      {showReport && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="font-bold text-lg">Full APR Report</h3>
+              <div className="flex gap-2">
+                <button onClick={downloadReport} className="flex items-center gap-1 px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">
+                  <Download size={16} /> .md
+                </button>
+                <button onClick={printReport} className="flex items-center gap-1 px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700">
+                  <FileText size={16} /> PDF
+                </button>
+                <button onClick={() => setShowReport(false)} className="px-3 py-1 text-gray-500 hover:bg-gray-100 rounded">X</button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 prose max-w-none" dangerouslySetInnerHTML={{ __html: parseMarkdown(report) }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
