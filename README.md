@@ -127,3 +127,6 @@ The project includes a powerful data generation engine that creates a realistic 
 -   **Equipment**: Calibration and preventive maintenance logs.
 -   **Environment**: Clean room environmental monitoring data.
 -   **Release**: Batch release decisions and disposition records.
+
+## Demo Video : https://youtu.be/1mw6pO0CnSs
+
