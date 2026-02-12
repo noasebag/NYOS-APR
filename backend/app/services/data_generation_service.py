@@ -1297,11 +1297,11 @@ def generate_csv_for_period(
     # Convert to CSV buffers
     csv_buffers = {}
     for name, df in all_data.items():
-        buffer = BytesIO()
-        df.to_csv(buffer, index=False)
+        csv_string = df.to_csv(index=False)
+        buffer = BytesIO(csv_string.encode('utf-8'))
         buffer.seek(0)
         csv_buffers[name] = buffer
-    
+
     return csv_buffers
 
 

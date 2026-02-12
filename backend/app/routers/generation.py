@@ -21,6 +21,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta, time
 from io import BytesIO
 import asyncio
+import traceback
 
 from app.services.data_generation_service import (
     PharmaceuticalDataGenerator,
@@ -229,6 +230,7 @@ async def generate_and_download_month(request: MonthGenerationRequest):
         )
         
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 
@@ -278,6 +280,7 @@ async def generate_and_download_year(request: YearGenerationRequest):
         )
         
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 
@@ -329,6 +332,7 @@ async def generate_and_download_custom(request: CustomGenerationRequest):
         )
         
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 
@@ -445,6 +449,7 @@ async def generate_single_data_type(
         )
         
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
 
