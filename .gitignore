@@ -46,4 +46,4 @@ nohup.out
 frontend/dist/
 .firebase/
 firebase-debug.log
-public/
+/public/
