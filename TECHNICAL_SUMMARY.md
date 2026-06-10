@@ -84,7 +84,7 @@ The generator deterministically embeds 7 hidden quality events:
 
 ### AI Integration
 - **Context building**: Every AI call receives a dynamically assembled context from the database (recent batches, QC results, open complaints, CAPAs, statistics)
-- **Models used**: `gemini-2.5-flash-lite` for chat and streaming, `gemini-2.5-flash` for full report generation
+- **Models used**: `gemini-3.1-flash-lite` for chat and streaming, `gemini-2.5-flash` for full report generation
 - **Quality Score**: Weighted composite (QC pass rate 40%, yield 25%, complaints 20%, equipment 15%) displayed as a 0-100 gauge
 
 ---

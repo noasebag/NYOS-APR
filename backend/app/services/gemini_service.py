@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 from app.config import GOOGLE_API_KEY
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 import json
 
-genai.configure(api_key=GOOGLE_API_KEY)
+client = genai.Client(api_key=GOOGLE_API_KEY)
 
 
 def get_data_context(db: Session, start_date: datetime = None, end_date: datetime = None) -> str:
@@ -163,7 +163,6 @@ Rules:
 async def chat_with_gemini(message: str, db: Session) -> str:
     try:
         context = get_data_context(db)
-        model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
         full_prompt = f"""{SYSTEM_PROMPT}
 
@@ -175,7 +174,10 @@ USER QUESTION:
 
 RESPONSE:"""
 
-        response = model.generate_content(full_prompt)
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite",
+            contents=full_prompt,
+        )
         return response.text
     except Exception as e:
         return f"Gemini connection error: {str(e)}. Check your API key."
@@ -361,7 +363,6 @@ async def generate_summary_stream(db: Session):
     try:
         context = get_data_context(db)
         stats = get_full_stats(db)
-        model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
         prompt = f"""{SYSTEM_PROMPT}
 
@@ -391,8 +392,10 @@ Use bullet points and **bold** text for important points.
 
 SUMMARY:"""
 
-        response = model.generate_content(prompt, stream=True)
-        for chunk in response:
+        for chunk in client.models.generate_content_stream(
+            model="gemini-3.1-flash-lite",
+            contents=prompt,
+        ):
             if chunk.text:
                 yield f"data: {json.dumps({'text': chunk.text})}\n\n"
         yield f"data: {json.dumps({'done': True})}\n\n"
@@ -405,8 +408,6 @@ async def generate_report(db: Session, start_date: datetime = None, end_date: da
     try:
         context = get_data_context(db, start_date, end_date)
         stats = get_full_stats(db, start_date, end_date)
-        model = genai.GenerativeModel("gemini-2.5-flash")
-
         # Build period string for the report
         if start_date and end_date:
             period_str = f"{start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}"
@@ -594,7 +595,10 @@ Date: _________
 
 Remember: Use ACTUAL numbers from the statistics. Do not use placeholder text. Be specific and data-driven."""
 
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
         report_content = response.text
         
         # Return both report and metadata

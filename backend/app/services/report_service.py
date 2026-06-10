@@ -324,7 +324,7 @@ async def generate_file_report(
         db.refresh(file_report)
         
         # Generate AI summary
-        model = genai.GenerativeModel("gemini-2.5-flash-lite")
+        model = genai.GenerativeModel("gemini-3.1-flash-lite")
         
         prompt = f"""You are a pharmaceutical quality expert analyzing data from a {data_type} file.
 
