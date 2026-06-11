@@ -358,10 +358,10 @@ export default function Dashboard() {
     setAprMessage('Generating APR report with AI analysis...');
     
     try {
-      // First, generate the APR report
-      const result = await api.generateAPR(aprYear, false);
-      if (!result || result.status === 'failed') {
-        throw new Error(result?.error || 'Failed to generate APR');
+      // First, generate the APR report (force regenerate if stuck)
+      const result = await api.generateAPR(aprYear, true);
+      if (!result || result.status !== 'completed') {
+        throw new Error(result?.error || `Failed to generate APR (status: ${result?.status})`);
       }
       
       setAprMessage('APR generated! Preparing PDF with logo...');

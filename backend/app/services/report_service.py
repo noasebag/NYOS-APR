@@ -797,14 +797,33 @@ async def generate_apr_report(
     
     db.commit()
     db.refresh(apr)
-    
+
+    try:
+        _generate_apr_content(apr, db, year, monthly_reports, direct_from_db, all_metrics, all_issues,
+                              total_batches, total_complaints, total_capas, avg_yield, qc_pass_rate,
+                              qc_total, qc_pass, db_batches, db_complaints, db_capas, db_qc_results,
+                              db_equipment, db_stability)
+    except Exception as e:
+        apr.status = ReportStatus.FAILED.value
+        apr.error_message = str(e)
+        db.commit()
+        raise e
+
+    return apr
+
+
+def _generate_apr_content(apr, db, year, monthly_reports, direct_from_db, all_metrics, all_issues,
+                           total_batches, total_complaints, total_capas, avg_yield, qc_pass_rate,
+                           qc_total, qc_pass, db_batches, db_complaints, db_capas, db_qc_results,
+                           db_equipment, db_stability):
+    """Generate all AI content for the APR and set status to completed."""
     # Collect all monthly summaries
     monthly_summaries = []
     for mr in monthly_reports:
-        month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+        month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         monthly_summaries.append(f"**{month_names[mr.month-1]}**: {mr.executive_summary[:300] if mr.executive_summary else 'No data'}")
-    
+
     model = genai.GenerativeModel("gemini-2.5-flash")
     
     # Build data context based on source
@@ -1024,12 +1043,10 @@ Be specific and actionable (300-400 words)."""
 
     rec_response = model.generate_content(rec_prompt)
     apr.recommendations = rec_response.text
-    
+
     apr.status = ReportStatus.COMPLETED.value
     db.commit()
     db.refresh(apr)
-    
-    return apr
 
 
 # ============================================================================
