@@ -10,7 +10,7 @@ The architecture allows incremental report building:
 Upload File → FileReport → MonthlyReport → APRReport
 """
 
-import google.generativeai as genai
+from google import genai
 from app.config import GOOGLE_API_KEY
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
@@ -22,7 +22,7 @@ import pandas as pd
 import io
 from enum import Enum
 
-genai.configure(api_key=GOOGLE_API_KEY)
+_genai_client = genai.Client(api_key=GOOGLE_API_KEY)
 
 
 class ReportStatus(str, Enum):
@@ -324,7 +324,7 @@ async def generate_file_report(
         db.refresh(file_report)
         
         # Generate AI summary
-        model = genai.GenerativeModel("gemini-3.1-flash-lite")
+        _model_file = "gemini-2.0-flash-lite"
         
         prompt = f"""You are a pharmaceutical quality expert analyzing data from a {data_type} file.
 
@@ -347,9 +347,9 @@ Generate a concise analytical summary (max 500 words) covering:
 
 Be specific with numbers. Use bullet points for clarity."""
 
-        response = model.generate_content(prompt)
+        response = _genai_client.models.generate_content(model=_model_file, contents=prompt)
         summary = response.text
-        
+
         # Generate recommendations
         rec_prompt = f"""Based on this pharmaceutical {data_type} data analysis:
 
@@ -358,7 +358,7 @@ ANOMALIES: {json.dumps(anomalies, indent=2) if anomalies else "None"}
 
 Provide 3-5 specific, actionable recommendations. Be concise and practical."""
 
-        rec_response = model.generate_content(rec_prompt)
+        rec_response = _genai_client.models.generate_content(model=_model_file, contents=rec_prompt)
         recommendations = rec_response.text
         
         # Update the report
@@ -453,7 +453,7 @@ async def generate_monthly_report(
     db.refresh(monthly_report)
     
     # Generate comprehensive monthly analysis using AI
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    _model_flash = "gemini-2.5-flash"
     month_names = ["January", "February", "March", "April", "May", "June", 
                    "July", "August", "September", "October", "November", "December"]
     month_name = month_names[month - 1]
@@ -483,7 +483,7 @@ Generate an EXECUTIVE SUMMARY (300-400 words) for this month covering:
 
 Use professional pharmaceutical language. Be specific with data."""
 
-    exec_response = model.generate_content(exec_prompt)
+    exec_response = _genai_client.models.generate_content(model=_model_flash, contents=exec_prompt)
     monthly_report.executive_summary = exec_response.text
     
     # Generate Production Analysis
@@ -501,7 +501,7 @@ Create a PRODUCTION ANALYSIS section (200-300 words) covering:
 - Equipment utilization
 - Deviations and issues"""
 
-    prod_response = model.generate_content(prod_prompt)
+    prod_response = _genai_client.models.generate_content(model=_model_flash, contents=prod_prompt)
     monthly_report.production_analysis = prod_response.text
     
     # Generate Quality Analysis
@@ -525,7 +525,7 @@ Create a QUALITY ANALYSIS section (200-300 words) covering:
 - Environmental monitoring results
 - Raw material quality"""
 
-    quality_response = model.generate_content(quality_prompt)
+    quality_response = _genai_client.models.generate_content(model=_model_flash, contents=quality_prompt)
     monthly_report.quality_analysis = quality_response.text
     
     # Generate Compliance Analysis
@@ -546,7 +546,7 @@ Create a COMPLIANCE ANALYSIS section (200-300 words) covering:
 - Equipment compliance
 - Regulatory concerns"""
 
-    comp_response = model.generate_content(comp_prompt)
+    comp_response = _genai_client.models.generate_content(model=_model_flash, contents=comp_prompt)
     monthly_report.compliance_analysis = comp_response.text
     
     # Store aggregated data
@@ -568,7 +568,7 @@ TRENDS:
 
 Provide 5-7 prioritized recommendations for immediate action and continuous improvement."""
 
-    rec_response = model.generate_content(rec_prompt)
+    rec_response = _genai_client.models.generate_content(model=_model_flash, contents=rec_prompt)
     monthly_report.recommendations = rec_response.text
     
     monthly_report.status = ReportStatus.COMPLETED.value
@@ -824,7 +824,7 @@ def _generate_apr_content(apr, db, year, monthly_reports, direct_from_db, all_me
                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         monthly_summaries.append(f"**{month_names[mr.month-1]}**: {mr.executive_summary[:300] if mr.executive_summary else 'No data'}")
 
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    _model_flash = "gemini-2.5-flash"
     
     # Build data context based on source
     if direct_from_db:
@@ -875,7 +875,7 @@ Generate a comprehensive EXECUTIVE SUMMARY (500-600 words) for the APR covering:
 
 This is for regulatory submission - be thorough and professional."""
 
-    exec_response = model.generate_content(exec_prompt)
+    exec_response = _genai_client.models.generate_content(model=_model_flash, contents=exec_prompt)
     apr.executive_summary = exec_response.text
     
     # Generate Production Review
@@ -894,7 +894,7 @@ Generate a comprehensive production review (400-500 words) covering:
 - Process improvements implemented
 - Manufacturing deviations summary"""
 
-    prod_response = model.generate_content(prod_prompt)
+    prod_response = _genai_client.models.generate_content(model=_model_flash, contents=prod_prompt)
     apr.production_review = prod_response.text
     
     # Generate Quality Review
@@ -914,7 +914,7 @@ Generate a comprehensive quality review (400-500 words) covering:
 - Analytical method performance
 - Specification compliance"""
 
-    quality_response = model.generate_content(quality_prompt)
+    quality_response = _genai_client.models.generate_content(model=_model_flash, contents=quality_prompt)
     apr.quality_review = quality_response.text
     
     # Generate Complaints Review
@@ -932,7 +932,7 @@ Generate a comprehensive complaints review (300-400 words) covering:
 - Root causes identified
 - Corrective actions taken"""
 
-    comp_response = model.generate_content(comp_prompt)
+    comp_response = _genai_client.models.generate_content(model=_model_flash, contents=comp_prompt)
     apr.complaints_review = comp_response.text
     
     # Generate CAPA Review
@@ -950,7 +950,7 @@ Generate a comprehensive CAPA review (300-400 words) covering:
 - Recurring issues
 - System improvements"""
 
-    capa_response = model.generate_content(capa_prompt)
+    capa_response = _genai_client.models.generate_content(model=_model_flash, contents=capa_prompt)
     apr.capa_review = capa_response.text
     
     # Generate Equipment Review
@@ -965,7 +965,7 @@ Generate a comprehensive equipment review (250-300 words) covering:
 - Equipment failures/repairs
 - Capacity utilization"""
 
-    equip_response = model.generate_content(equip_prompt)
+    equip_response = _genai_client.models.generate_content(model=_model_flash, contents=equip_prompt)
     apr.equipment_review = equip_response.text
     
     # Generate Stability Review
@@ -980,7 +980,7 @@ Generate a comprehensive stability review (250-300 words) covering:
 - Any OOS trends
 - Shelf-life confirmation"""
 
-    stab_response = model.generate_content(stab_prompt)
+    stab_response = _genai_client.models.generate_content(model=_model_flash, contents=stab_prompt)
     apr.stability_review = stab_response.text
     
     # Generate Trend Analysis
@@ -1006,7 +1006,7 @@ Generate a comprehensive trend analysis (400-500 words) covering:
 - Early warning indicators
 - Year-over-year comparison insights"""
 
-    trend_response = model.generate_content(trend_prompt)
+    trend_response = _genai_client.models.generate_content(model=_model_flash, contents=trend_prompt)
     apr.trend_analysis = trend_response.text
     
     # Generate Conclusions
@@ -1027,7 +1027,7 @@ Summarize:
 
 Keep it professional and suitable for regulatory submission (200-300 words)."""
 
-    conc_response = model.generate_content(conc_prompt)
+    conc_response = _genai_client.models.generate_content(model=_model_flash, contents=conc_prompt)
     apr.conclusions = conc_response.text
     
     # Generate Recommendations
@@ -1041,7 +1041,7 @@ Based on all the analysis, provide:
 
 Be specific and actionable (300-400 words)."""
 
-    rec_response = model.generate_content(rec_prompt)
+    rec_response = _genai_client.models.generate_content(model=_model_flash, contents=rec_prompt)
     apr.recommendations = rec_response.text
 
     apr.status = ReportStatus.COMPLETED.value
